@@ -359,6 +359,8 @@ class SFType(object):
         * data -- a dict of the data to create or update the SObject from. It
                   will be JSON-encoded before being transmitted.
         """
+        record_id = SFType._clean_external_id(record_id)
+
         result = self._call_salesforce('PATCH', self.base_url + record_id,
                                        data=json.dumps(data))
         return result.status_code
@@ -419,6 +421,35 @@ class SFType(object):
             _exception_handler(result, self.name)
 
         return result
+
+    @staticmethod
+    def _clean_external_id(record_id):
+        """
+        Utility method for working around salesforce expectations of
+        how ids are sanitized or quoted.
+        """
+        if '/' in record_id:
+            # first part of the upsert id doesn't need special treatment
+            (field, value) = record_id.split('/', 1)
+
+            # resource not found error if not escaped
+            value = value.replace('/', '%2F')
+            value = value.replace(':', '%3A')
+
+            # Really unexpected behavior:
+            # if period is not escaped the id is truncated
+            # myfield__c/abc.123 will be created in salesforce as "abc"
+            # and the ".123" are silently lost
+            #
+            # Please Note:
+            #
+            # You can not use ids with period (.) currently because requests
+            # (used for http) unquotes them:
+            # https://github.com/kennethreitz/requests/issues/1839
+            value = value.replace('.', '%2E')
+        else:
+            return record_id
+
 
 
 class SalesforceAPI(Salesforce):
